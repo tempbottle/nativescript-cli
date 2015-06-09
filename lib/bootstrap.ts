@@ -30,6 +30,7 @@ $injector.requireCommand("platform|add", "./commands/add-platform");
 $injector.requireCommand("platform|remove", "./commands/remove-platform");
 $injector.requireCommand("platform|update", "./commands/update-platform");
 $injector.requireCommand("library|add", "./commands/add-library");
+$injector.requireCommand("run|*default", "./commands/run"); 
 $injector.requireCommand("run|ios", "./commands/run"); 
 $injector.requireCommand("run|android", "./commands/run");
 
@@ -37,9 +38,11 @@ $injector.requireCommand("debug|ios", "./commands/debug");
 $injector.requireCommand("debug|android", "./commands/debug");
 
 $injector.requireCommand("prepare", "./commands/prepare");
+$injector.requireCommand("build|*default", "./commands/build");
 $injector.requireCommand("build|ios", "./commands/build");
 $injector.requireCommand("build|android", "./commands/build");
 $injector.requireCommand("deploy", "./commands/deploy");
+$injector.requireCommand("emulate|*default", "./commands/emulate");
 $injector.requireCommand("emulate|android", "./commands/emulate");
 $injector.requireCommand("emulate|ios", "./commands/emulate");
 

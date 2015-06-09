@@ -20,7 +20,7 @@ class AndroidDebugService implements IDebugService {
 
 	public debugOnEmulator(): IFuture<void> {
 		return (() => {
-			this.$platformService.deployOnEmulator(this.platform).wait();
+			this.$platformService.deployOnEmulators([this.platform]).wait();
 			this.debugOnDevice().wait();
 		}).future<void>()();
 	}
@@ -32,11 +32,11 @@ class AndroidDebugService implements IDebugService {
 			var platformData = this.$platformsData.getPlatformData(this.platform);
 
 			if (this.$options.debugBrk) {
-				this.$platformService.preparePlatform(this.platform).wait();
+				this.$platformService.preparePlatforms([this.platform]).wait();
 
 				var cachedDeviceOption = this.$options.forDevice;
 				this.$options.forDevice = true;
-				this.$platformService.buildPlatform(this.platform).wait();
+				this.$platformService.buildPlatforms([this.platform]).wait();
 				this.$options.forDevice = !!cachedDeviceOption;
 
 				packageFile = this.$platformService.getLatestApplicationPackageForDevice(platformData).wait().packageName;

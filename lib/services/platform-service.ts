@@ -7,6 +7,7 @@ import util = require("util");
 import constants = require("./../constants");
 import helpers = require("./../common/helpers");
 import semver = require("semver");
+import Future = require("fibers/future");
 
 export class PlatformService implements IPlatformService {
 	private static TNS_MODULES_FOLDER_NAME = "tns_modules";
@@ -92,7 +93,7 @@ export class PlatformService implements IPlatformService {
 			let installedPlugins = this.$pluginsService.getAllInstalledPlugins().wait();
 			_.each(installedPlugins, pluginData => this.$pluginsService.prepare(pluginData).wait());
 
-			this.$logger.out("Project successfully created.");
+			this.$logger.out(`Project successfully created for ${platform} platform.`);
 
 		}).future<void>()();
 	}
@@ -143,10 +144,12 @@ export class PlatformService implements IPlatformService {
 		}).future<string[]>()();
 	}
 
-	public preparePlatform(platform: string): IFuture<void> {
-		return (() => {
-			platform = platform.toLowerCase();
+	public preparePlatforms(platforms: string[]): IFuture<void> {
+		return this.executeAsyncForAllInstalledPlatforms(this.preparePlatformCore, platforms);
+	}
 
+	private preparePlatformCore(platform: string): IFuture<void> {
+		return (() => {
 			var platformData = this.$platformsData.getPlatformData(platform);
 
 			// Copy app folder to native project
@@ -169,7 +172,7 @@ export class PlatformService implements IPlatformService {
 			var files: string[] = [];
 
 			_.each(contents, d => {
-				let filePath = path.join(platformData.appDestinationDirectoryPath, constants.APP_FOLDER_NAME, d);				
+				let filePath = path.join(platformData.appDestinationDirectoryPath, constants.APP_FOLDER_NAME, d);
 				let fsStat = this.$fs.getFsStats(filePath).wait();
 				if(fsStat.isDirectory() && d !== constants.APP_RESOURCES_FOLDER_NAME) {
 					this.processPlatformSpecificFiles(platform, this.$fs.enumerateFilesInDirectorySync(filePath)).wait();
@@ -183,31 +186,66 @@ export class PlatformService implements IPlatformService {
 			this.$pluginsService.ensureAllDependenciesAreInstalled().wait();
 			var tnsModulesDestinationPath = path.join(platformData.appDestinationDirectoryPath, constants.APP_FOLDER_NAME, PlatformService.TNS_MODULES_FOLDER_NAME);
 			this.$broccoliBuilder.prepareNodeModules(tnsModulesDestinationPath, this.$projectData.projectDir).wait();
-
-			this.$logger.out("Project successfully prepared");
+			this.$logger.out(`Project successfully prepared for ${platform} platform.`);
 		}).future<void>()();
 	}
+
+	private executeAsyncForAllInstalledPlatforms(action: (selectedPlatform: string) => IFuture<void>, platforms?: string[]): IFuture<void> {
+		return (() => {
+			let selectedPlatforms = this.getInstalledPlatforms().wait();
+			if(platforms && platforms.length > 0) {
+				_.each(platforms, platform => {
+					platform = platform.toLowerCase();
+					if(!_.contains(selectedPlatforms, platform)) {
+						// Make sure the platform is added.
+						this.addPlatform(platform).wait(); 
+					}
+				});
+				selectedPlatforms = platforms;
+			}
+
+			// let availablePlatforms = _.keys(this.$platformsData.availablePlatforms);
+			
+			if(selectedPlatforms.length > 1) {
+				this.$options.justlaunch = true;
+			}
+
+			// execute parallelTasks
+			Future.wait(_.map(selectedPlatforms, platform => action.apply(this, [platform])));
+			//_.each(selectedPlatforms, platform => action.apply(this, [platform]).wait());
+		}).future<void>()();
+	}
+
+	public buildPlatforms(platforms: string[]): IFuture<void> {
+		return this.executeAsyncForAllInstalledPlatforms(this.buildPlatformCore, platforms);
+	}
 	
-	public buildPlatform(platform: string): IFuture<void> {
+	private buildPlatformCore(platform: string): IFuture<void> {
 		return (() => {
 			platform = platform.toLowerCase();
-			this.preparePlatform(platform).wait();
+			this.preparePlatforms([platform]).wait();
 
 			var platformData = this.$platformsData.getPlatformData(platform);
 			platformData.platformProjectService.buildProject(platformData.projectRoot).wait();
-			this.$logger.out("Project successfully built");
+			this.$logger.out(`Project successfully built for ${platform} platform.`);
 		}).future<void>()();
 	}
 
-	public runPlatform(platform: string): IFuture<void> {
+	public runPlatforms(platforms: string[]): IFuture<void> {
+		return this.executeAsyncForAllInstalledPlatforms(this.runPlatformCore, platforms);
+	}
+
+	private runPlatformCore(platform: string): IFuture<void> {
 		return (() => {
 			platform = platform.toLowerCase();
 
 			if (this.$options.emulator) {
 				this.deployOnEmulator(platform).wait();
 			} else {
-				this.deployOnDevice(platform).wait();
+				this.deployOnDeviceCore(platform).wait();
 			}
+
+			this.$commandsService.tryExecuteCommand("device", ["run", this.$projectData.projectId]).wait();
 		}).future<void>()();
 	}
 
@@ -236,7 +274,11 @@ export class PlatformService implements IPlatformService {
 		}).future<void>()();
 	}
 
-	public deployOnDevice(platform: string): IFuture<void> {
+	public deployOnDevices(platforms: string[]): IFuture<void> {
+		return this.executeAsyncForAllInstalledPlatforms(this.deployOnDeviceCore, platforms);
+	}
+	
+	private deployOnDeviceCore(platform: string): IFuture<void> {
 		return (() => {
 			platform = platform.toLowerCase();
 
@@ -244,7 +286,7 @@ export class PlatformService implements IPlatformService {
 
 			var cachedDeviceOption = this.$options.forDevice;
 			this.$options.forDevice = true;
-			this.buildPlatform(platform).wait();
+			this.buildPlatforms([platform]).wait();
 			this.$options.forDevice = !!cachedDeviceOption;
 
 			// Get latest package that is produced from build
@@ -254,10 +296,14 @@ export class PlatformService implements IPlatformService {
 			this.$devicesServices.initialize({platform: platform, deviceId: this.$options.device}).wait();
 			var action = (device: Mobile.IDevice): IFuture<void> => { return device.deploy(packageFile, this.$projectData.projectId); };
 			this.$devicesServices.execute(action).wait();
-			this.$commandsService.tryExecuteCommand("device", ["run", this.$projectData.projectId]).wait();
+			//this.$commandsService.tryExecuteCommand("device", ["run", this.$projectData.projectId]).wait();
 		}).future<void>()();
 	}
 
+	public deployOnEmulators(platform: string[]): IFuture<void> {
+		return this.executeAsyncForAllInstalledPlatforms(this.deployOnEmulator, platform);
+	}
+	
 	public deployOnEmulator(platform: string): IFuture<void> {
 		return (() => {
 			this.validatePlatformInstalled(platform);
@@ -270,7 +316,7 @@ export class PlatformService implements IPlatformService {
 			emulatorServices.checkDependencies().wait();
 
 			if(!this.$options.availableDevices) {
-				this.buildPlatform(platform).wait();
+				this.buildPlatforms([platform]).wait();
 
 				var packageFile = this.getLatestApplicationPackageForEmulator(platformData).wait().packageName;
 				this.$logger.out("Using ", packageFile);
@@ -281,6 +327,7 @@ export class PlatformService implements IPlatformService {
 			emulatorServices.startEmulator(packageFile, { stderrFilePath: logFilePath, stdoutFilePath: logFilePath, appId: this.$projectData.projectId }).wait();
 		}).future<void>()();
 	}
+
 
 	public validatePlatform(platform: string): void {
 		if(!platform) {

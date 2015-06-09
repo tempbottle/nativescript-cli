@@ -54,6 +54,7 @@ class ProjectIntegrationTest {
 			if(!fs.exists(path.join(defaultTemplatePath, latestVersion)).wait()) {
 				npmInstallationManager.addToCache(defaultTemplatePackageName, latestVersion).wait();
 			}
+
 			if(!fs.exists(path.join(defaultTemplatePath, latestVersion, "package", "app")).wait()) {
 				npmInstallationManager.cacheUnpack(defaultTemplatePackageName, latestVersion).wait();
 			}

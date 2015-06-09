@@ -102,7 +102,7 @@ class IOSDebugService implements IDebugService {
     private emulatorDebugBrk(): IFuture<void> {
         return (() => {
             var platformData = this.$platformsData.getPlatformData(this.platform);
-            this.$platformService.buildPlatform(this.platform).wait();
+            this.$platformService.buildPlatforms([this.platform]).wait();
             var emulatorPackage = this.$platformService.getLatestApplicationPackageForEmulator(platformData).wait();
 
             this.$iOSEmulatorServices.startEmulator(emulatorPackage.packageName, { args: "--nativescript-debug-brk" }).wait();
@@ -128,7 +128,7 @@ class IOSDebugService implements IDebugService {
             this.$devicesServices.initialize({ platform: this.platform, deviceId: this.$options.device }).wait();
             this.$devicesServices.execute(device => (() => {
                 // we intentionally do not wait on this here, because if we did, we'd miss the AppLaunching notification
-                let deploy = this.$platformService.deployOnDevice(this.platform);
+                let deploy = this.$platformService.deployOnDevices([this.platform]);
                 
                 let iosDevice = <iOSDevice.IOSDevice>device;
                 let projectId = this.$projectData.projectId;

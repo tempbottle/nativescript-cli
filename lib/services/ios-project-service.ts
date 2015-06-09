@@ -9,6 +9,11 @@ import xcode = require("xcode");
 import constants = require("./../constants");
 import helpers = require("./../common/helpers");
 
+const enum BuildTypes {
+	emulator,
+	device
+}
+
 class IOSProjectService implements  IPlatformProjectService {
 	private static XCODE_PROJECT_EXT_NAME = ".xcodeproj";
 	private static XCODEBUILD_MIN_VERSION = "6.0";
@@ -25,7 +30,8 @@ class IOSProjectService implements  IPlatformProjectService {
 		private $logger: ILogger,
 		private $iOSEmulatorServices: Mobile.IEmulatorPlatformServices,
 		private $options: IOptions,
-		private $injector: IInjector) { }
+		private $injector: IInjector,
+		private $iOSDeviceDiscovery: Mobile.IDeviceDiscovery) { }
 
 	public get platformData(): IPlatformData {
 		var projectRoot = path.join(this.$projectData.platformsDir, "ios");
@@ -121,50 +127,98 @@ class IOSProjectService implements  IPlatformProjectService {
 		}).future<void>()();
 	}
 
-	public buildProject(projectRoot: string): IFuture<void> {
+	private getBuildTypes(): IFuture<BuildTypes[]> {
 		return (() => {
-			var basicArgs = [
-				"-project", path.join(projectRoot, this.$projectData.projectName + ".xcodeproj"),
-				"-target", this.$projectData.projectName,
-				"-configuration", this.$options.release ? "Release" : "Debug",
-				"build",
-				'SHARED_PRECOMPS_DIR=' + path.join(projectRoot, 'build', 'sharedpch')
-			];
-			var args: string[] = [];
-
+			let types: BuildTypes[] = []
 			if(this.$options.forDevice) {
-				args = basicArgs.concat([
+				types.push(BuildTypes.device);
+			} 
+			
+			if(this.$options.emulator || this.$options.avd || this.$options.geny) {
+				types.push(BuildTypes.emulator);
+			}
+			
+			if(!types.length) {
+				// user had not specified what to use. Check if there are devices and emulators running
+			}
+			
+			return _.unique(types);
+		}).future<BuildTypes[]>()();
+	}
+
+	private getBuildActions(): IFuture<((projectRoot: string, basicArgs: string[]) => IFuture<void>)[]> {
+		return (() => {
+			let buildTypes = this.getBuildTypes().wait();
+			let buildActions: ((projectRoot: string, basicArgs: string[]) => IFuture<void>)[] = [];
+			_.each(buildTypes, type => {
+				switch(type)
+				{
+					case BuildTypes.emulator:
+						buildActions.push(this.buildProjectForSimulator);
+						break;
+					case BuildTypes.device:
+						buildActions.push(this.buildProjectForDevice);
+						break;
+					default:
+						this.$logger.trace(`Unknown build action '${type}'.`);
+				}
+			});
+			return buildActions;
+		}).future<((projectRoot: string, basicArgs: string[]) => IFuture<void>)[]>()();
+	}
+
+	private buildProjectForSimulator(projectRoot: string, basicArgs: string[]): IFuture<void> {
+		return (() => {
+			basicArgs = basicArgs || [];
+			let args = basicArgs.concat([
+					"-sdk", "iphonesimulator",
+					"-arch", "i386",
+					"VALID_ARCHS=\"i386\"",
+					"CONFIGURATION_BUILD_DIR=" + path.join(projectRoot, "build", "emulator")
+				]);
+			this.$childProcess.spawnFromEvent("xcodebuild", args, "exit", {cwd: this.$options, stdio: 'inherit'}).wait();
+		}).future<void>()();
+	}
+
+	private buildProjectForDevice(projectRoot: string, basicArgs: string[]): IFuture<void> {
+		return (() => {
+			basicArgs = basicArgs || [];
+			let args = basicArgs.concat([
 					"-xcconfig", path.join(projectRoot, this.$projectData.projectName, "build.xcconfig"),
 					"-sdk", "iphoneos",
 					'ARCHS=armv7 arm64',
 					'VALID_ARCHS=armv7 arm64',
 					"CONFIGURATION_BUILD_DIR=" + path.join(projectRoot, "build", "device")
 				]);
-			} else {
-				args = basicArgs.concat([
-					"-sdk", "iphonesimulator",
-					"-arch", "i386",
-					"VALID_ARCHS=\"i386\"",
-					"CONFIGURATION_BUILD_DIR=" + path.join(projectRoot, "build", "emulator")
-				]);
-
-			}
 
 			this.$childProcess.spawnFromEvent("xcodebuild", args, "exit", {cwd: this.$options, stdio: 'inherit'}).wait();
 
-			if(this.$options.forDevice) {
-				var buildOutputPath = path.join(projectRoot, "build", "device");
+			var buildOutputPath = path.join(projectRoot, "build", "device");
+			// Produce ipa file
+			var xcrunArgs = [
+				"-sdk", "iphoneos",
+				"PackageApplication",
+				"-v", path.join(buildOutputPath, this.$projectData.projectName + ".app"),
+				"-o", path.join(buildOutputPath, this.$projectData.projectName + ".ipa")
+			];
 
-				// Produce ipa file
-				var xcrunArgs = [
-					"-sdk", "iphoneos",
-					"PackageApplication",
-					"-v", path.join(buildOutputPath, this.$projectData.projectName + ".app"),
-					"-o", path.join(buildOutputPath, this.$projectData.projectName + ".ipa")
-				];
+			this.$childProcess.spawnFromEvent("xcrun", xcrunArgs, "exit", {cwd: this.$options, stdio: 'inherit'}).wait();
+		}).future<void>()();
+	}
 
-				this.$childProcess.spawnFromEvent("xcrun", xcrunArgs, "exit", {cwd: this.$options, stdio: 'inherit'}).wait();
-			}
+	public buildProject(projectRoot: string): IFuture<void> {
+		return (() => {
+			let basicArgs = [
+				"-project", path.join(projectRoot, this.$projectData.projectName + ".xcodeproj"),
+				"-target", this.$projectData.projectName,
+				"-configuration", this.$options.release ? "Release" : "Debug",
+				"build",
+				'SHARED_PRECOMPS_DIR=' + path.join(projectRoot, 'build', 'sharedpch')
+			];
+
+			let buildActions = this.getBuildActions().wait();
+			// build for each build type
+			Future.wait(_.map(buildActions, action => action.apply(this, [projectRoot, basicArgs])));
 		}).future<void>()();
 	}
 

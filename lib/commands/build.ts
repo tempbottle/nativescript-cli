@@ -1,15 +1,18 @@
 ///<reference path="../.d.ts"/>
 "use strict";
 
-export class BuildCommandBase {
+export class BuildCommandBase implements ICommand {
 	constructor(private $platformService: IPlatformService) { }
+	public allowedParameters: ICommandParameter[] = [];
 
-	executeCore(args: string[]): IFuture<void> {
-		return this.$platformService.buildPlatform(args[0]);
+	execute(args: string[]): IFuture<void> {
+		// TODO: validate the arguments
+		return this.$platformService.buildPlatforms(args);
 	}
 }
+$injector.registerCommand("build|*default", BuildCommandBase);
 
-export class BuildIosCommand extends BuildCommandBase implements  ICommand {
+export class BuildIosCommand extends BuildCommandBase {
 	constructor($platformService: IPlatformService,
 		private $platformsData: IPlatformsData) {
 		super($platformService);
@@ -18,13 +21,13 @@ export class BuildIosCommand extends BuildCommandBase implements  ICommand {
 	public allowedParameters: ICommandParameter[] = [];
 
 	public execute(args: string[]): IFuture<void> {
-		return this.executeCore([this.$platformsData.availablePlatforms.iOS]);
+		return super.execute([this.$platformsData.availablePlatforms.iOS]);
 	}
 }
 $injector.registerCommand("build|ios", BuildIosCommand);
 
 
-export class BuildAndroidCommand extends BuildCommandBase implements  ICommand {
+export class BuildAndroidCommand extends BuildCommandBase {
 	constructor($platformService: IPlatformService,
 				private $platformsData: IPlatformsData) {
 		super($platformService);
@@ -33,7 +36,7 @@ export class BuildAndroidCommand extends BuildCommandBase implements  ICommand {
 	public allowedParameters: ICommandParameter[] = [];
 
 	public execute(args: string[]): IFuture<void> {
-		return this.executeCore([this.$platformsData.availablePlatforms.Android]);
+		return super.execute([this.$platformsData.availablePlatforms.Android]);
 	}
 }
 $injector.registerCommand("build|android", BuildAndroidCommand);

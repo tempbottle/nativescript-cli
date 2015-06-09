@@ -6,7 +6,7 @@ export class DeployOnDeviceCommand implements ICommand {
 		private $platformCommandParameter: ICommandParameter) { }
 
 	execute(args: string[]): IFuture<void> {
-		return this.$platformService.deployOnDevice(args[0]);
+		return this.$platformService.deployOnDevices(args);
 	}
 
 	allowedParameters = [this.$platformCommandParameter];

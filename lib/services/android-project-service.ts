@@ -268,7 +268,9 @@ class AndroidProjectService implements IPlatformProjectService {
 			command = process.env.COMSPEC || 'cmd.exe';
 		}
 
-		return this.$childProcess.spawnFromEvent(command, args, "close", {stdio: "inherit"});
+		//return this.$childProcess.spawnFromEvent(command, args, "close", {stdio: "inherit" });
+		let options = this.$options.skipOutput ? {stdio:  ["ignore", "ignore", "inherit"] } : { stdio: "inherit" };
+		return this.$childProcess.spawnFromEvent(command, args, "close", options);
 	}
 
 	private getAntArgs(configuration: string, projectRoot: string): string[] {

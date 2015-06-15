@@ -48,6 +48,10 @@ interface IOpener {
     open(target: string, appname: string): void;
 }
 
+interface IUsbLiveSyncService {
+	liveSync(platform: string): IFuture<void>;
+}
+
 interface IOptions extends ICommonOptions {
 	frameworkPath: string;
 	copyFrom: string;

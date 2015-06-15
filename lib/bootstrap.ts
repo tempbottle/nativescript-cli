@@ -23,6 +23,8 @@ $injector.require("analyticsSettingsService", "./services/analytics-settings-ser
 
 $injector.require("emulatorSettingsService", "./services/emulator-settings-service");
 
+$injector.require("usbLiveSyncService", "./services/usb-livesync-service");
+
 $injector.require("platformCommandParameter", "./platform-command-param");
 $injector.requireCommand("create", "./commands/create-project");
 $injector.requireCommand("platform|*list", "./commands/list-platforms");
@@ -59,3 +61,5 @@ $injector.require("broccoliPluginWrapper", "./tools/broccoli/broccoli-plugin-wra
 $injector.require("pluginsService", "./services/plugins-service");
 $injector.requireCommand("plugin|add", "./commands/plugin/add-plugin");
 $injector.requireCommand("plugin|remove", "./commands/plugin/remove-plugin");
+
+$injector.requireCommand("livesync", "./commands/livesync");
